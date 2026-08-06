@@ -1,6 +1,7 @@
 import os
 import subprocess
 import threading
+import time
 
 import gi
 from loguru import logger as log
@@ -20,6 +21,12 @@ from gi.repository import Adw
 
 from .ThresholdList import ThresholdListRow
 from .value_parse import in_range, parse_number
+from .value_source import (
+    pick_newer,
+    read_value_file,
+    stat_mtime_ns,
+    written_since,
+)
 
 
 def is_in_flatpak() -> bool:
@@ -112,6 +119,11 @@ class DialCommand(ActionCore):
         self.put_custom_config_rows_below_gen_ui = True
         self.threshold_row: ThresholdListRow | None = None
 
+        # Last value-file mtime we acted on. Lets on_tick skip the read when
+        # nothing has written the file, and keeps a broken path from logging
+        # once a second.
+        self._seen_mtime_ns: int | None = None
+
         self._build_event_assigners()
         self._build_generative_ui()
 
@@ -170,6 +182,14 @@ class DialCommand(ActionCore):
             default_value="",
             title="⏎ Press Command",
             on_change=self._on_config_change,
+        )
+
+        self.value_file_row = EntryRow(
+            action_core=self,
+            var_name="value_file",
+            default_value="",
+            title="Value File",
+            on_change=self._on_value_file_change,
         )
 
         self.min_row = SpinRow(
@@ -248,6 +268,9 @@ class DialCommand(ActionCore):
     def _get_thresholds(self) -> list[dict]:
         return self.get_settings().get("thresholds", [])
 
+    def _value_file(self) -> str:
+        return str(self.get_settings().get("value_file", "") or "").strip()
+
     def _blend(self) -> bool:
         return bool(self.get_settings().get("blend", False))
 
@@ -269,12 +292,67 @@ class DialCommand(ActionCore):
         self.set_settings(settings)
         return value
 
+    # ── value file ────────────────────────────────────────────
+
+    def _accept(self, value: float | None, source: str) -> float | None:
+        """Range-check a value reported by an outside source.
+
+        Out-of-range is rejected rather than clamped, so a source reporting
+        nonsense can't drag the dial to an end stop.
+        """
+        if value is None:
+            return None
+        low, high = self._min(), self._max()
+        if not in_range(value, low, high):
+            log.warning(
+                f"DialCommand: ignoring {source} value {_fmt(value)}, "
+                f"outside range {_fmt(low)}..{_fmt(high)}"
+            )
+            return None
+        return value
+
+    def _read_file_value(self) -> tuple[float | None, int | None]:
+        """Current (value, mtime_ns) from the configured value file."""
+        value, mtime_ns = read_value_file(self._value_file())
+        return self._accept(value, "value file"), mtime_ns
+
+    def _sync_from_file(self) -> bool:
+        """Adopt the value file's number. True when the value changed."""
+        if not self._value_file():
+            return False
+        value, mtime_ns = self._read_file_value()
+        self._seen_mtime_ns = mtime_ns
+        if value is None or value == self._get_value():
+            return False
+        self._set_value(value)
+        return True
+
     # ── event handlers ────────────────────────────────────────
 
+    def on_tick(self):
+        """Poll the value file so outside changes reach the dial face.
+
+        Runs about once a second for actions on the active page. Stats before
+        reading, and only does real work when the file has actually moved.
+        """
+        try:
+            path = self._value_file()
+            if not path:
+                return
+            if stat_mtime_ns(path) == self._seen_mtime_ns:
+                return
+            if self._sync_from_file():
+                self._update_visuals()
+        except Exception as e:
+            log.error(f"DialCommand: value file tick failed: {e}")
+
     def _on_turn(self, direction: int):
+        # Re-base on the value file first, so the step is relative to reality
+        # rather than to a counter that drifted while we weren't looking.
+        self._sync_from_file()
         step = self._step()
-        # The stepped value is only what we *ask* for; the command's own
-        # output is what we believe afterwards.
+        # The stepped value is only what we *ask* for; what the command and
+        # the value file report is what we believe afterwards.
         proposed = self._set_value(self._get_value() + direction * step)
         cmd = "command_cw" if direction > 0 else "command_ccw"
         reported = self._run_with_value(self.get_settings().get(cmd), proposed)
@@ -283,6 +361,7 @@ class DialCommand(ActionCore):
         self._update_visuals()
 
     def _on_press(self):
+        self._sync_from_file()
         reported = self._run_with_value(
             self.get_settings().get("command_press"), self._get_value()
         )
@@ -291,35 +370,51 @@ class DialCommand(ActionCore):
         self._update_visuals()
 
     def _run_with_value(self, command: str, value: float) -> float | None:
-        """Run ``command`` with {value} substituted; return the value it printed.
+        """Run ``command`` with {value} substituted; return what it reported.
 
-        None means "the command told us nothing usable" -- no output, no
-        number in the output, it outlived COMMAND_TIMEOUT, or it printed a
-        number outside the configured min..max range -- and the caller should
-        keep its own bookkeeping. An out-of-range number is rejected rather
-        than clamped, so a command that reports nonsense can't silently drag
-        the dial to an end stop.
+        A command can report back two ways: by printing a number, or by
+        writing the configured value file. When both happen, the more recent
+        one wins -- so a command that outlives COMMAND_TIMEOUT can still be
+        heard through the file, and an unrelated process that touched the
+        file mid-command isn't overwritten by a staler number.
+
+        None means nothing usable came back -- no output, no number, nothing
+        in range -- and the caller should keep its own bookkeeping.
         """
         if not command:
             return None
+
+        started_ns = time.time_ns()
         stdout = run_command_capture(
             command.replace("{value}", _fmt(value)), COMMAND_TIMEOUT
         )
-        reported = parse_number(stdout)
-        if reported is None:
-            return None
-        low, high = self._min(), self._max()
-        if not in_range(reported, low, high):
-            log.warning(
-                f"DialCommand: ignoring reported value {_fmt(reported)}, "
-                f"outside range {_fmt(low)}..{_fmt(high)}"
-            )
-            return None
-        return reported
+        stdout_ns = time.time_ns()
+        stdout_value = self._accept(parse_number(stdout), "reported")
+
+        # Read the file *after* the command, not before: the point is to see
+        # anything it (or anyone else) wrote while it was running.
+        file_value, file_ns = self._read_file_value()
+        if self._value_file():
+            self._seen_mtime_ns = file_ns
+
+        # An untouched file isn't reporting anything -- it still holds the
+        # number we already synced from at the start of the turn. Taking it
+        # here would undo the step the user just made.
+        if not written_since(file_ns, started_ns):
+            file_value = None
+
+        return pick_newer(stdout_value, stdout_ns, file_value, file_ns)
 
     # ── config change handlers ────────────────────────────────
 
     def _on_config_change(self, *_args):
+        self._update_visuals()
+
+    def _on_value_file_change(self, *_args):
+        # Forget the old file's mtime so the new path is read immediately
+        # rather than after it happens to change.
+        self._seen_mtime_ns = None
+        self._sync_from_file()
         self._update_visuals()
 
     def _on_range_change(self, *_args):
@@ -453,6 +548,9 @@ class DialCommand(ActionCore):
     # ── lifecycle ─────────────────────────────────────────────
 
     def on_ready(self):
+        # Prefer the value file's number over the persisted one: something
+        # may have moved it while this page wasn't loaded.
+        self._sync_from_file()
         # Clamp any persisted value into the current range, then paint.
         self._set_value(self._get_value())
         self._update_visuals()
