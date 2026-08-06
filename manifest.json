@@ -1,0 +1,16 @@
+{
+    "version": "1.0.0",
+    "id": "com_z19r_DialCommand",
+    "name": "Dial Command",
+    "descriptions": {
+        "en_US": "Run separate commands for dial clockwise, counterclockwise, and press."
+    },
+    "short-descriptions": {
+        "en_US": "Dial-aware run command"
+    },
+    "tags": ["Utility"],
+    "minimum-app-version": "1.5.0",
+    "app-version": "1.5.0-beta",
+    "description": "Run separate commands for dial clockwise, counterclockwise, and press.",
+    "short-description": "Dial-aware run command"
+}
