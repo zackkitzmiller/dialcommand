@@ -79,6 +79,29 @@ otherwise       ->  stdout value wins
 neither usable  ->  keep internal counter
 ```
 
+### The staleness gate (added during implementation)
+
+The rule above is not sufficient on its own. Consider: dial at 50, file says
+50, user turns clockwise to 51. The command adjusts the volume but prints
+nothing and doesn't write the file — a separate daemon will, seconds later.
+With only the rule above, the file's perfectly valid `50` is the sole
+candidate, so it wins and the dial snaps 51 -> 50 and looks stuck.
+
+The file was not *reporting*; it was holding the number the turn already
+synced from. So the file counts as a report only when it was written during
+the command:
+
+```
+written_since(file_ns, started_ns)  ->  file is a candidate
+otherwise                           ->  file is ignored here
+```
+
+`started_ns` is captured before the command runs. A write landing exactly at
+`started_ns` counts. This preserves the newer-wins rule between two genuinely
+fresh reports while keeping a stale file from undoing the user's step. The
+slow-command case still works: that write lands after `_run_with_value`
+returns and is picked up by the next tick.
+
 ### Why "newer" is well defined
 
 Measured on this machine: `st_mtime_ns` and `time.time_ns()` are
@@ -108,7 +131,7 @@ filesystem IO does not belong there.
 
 - `read_value_file(path) -> (value, mtime_ns)` — filesystem, tested with
   `tmp_path`
-- `pick_newer(stdout_val, cmd_ns, file_val, file_ns) -> float | None` — pure,
+- `pick_newer(...)` and `written_since(...)` — pure,
   and the primary test target, since precedence is where bugs will live
 
 ## Testing
