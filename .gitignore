@@ -7,3 +7,6 @@ __pycache__/
 .rtk/
 .tokensave/
 .whetstone/
+
+# Local agent session state
+.claude/.headroom_wrap_*
