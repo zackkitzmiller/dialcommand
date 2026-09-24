@@ -61,9 +61,7 @@ def read_value_file(path: str | None) -> tuple[float | None, int | None]:
     return parse_number(text), mtime_ns
 
 
-def written_since(
-    file_ns: int | None, started_ns: int | None
-) -> bool:
+def written_since(file_ns: int | None, started_ns: int | None) -> bool:
     """True when the value file was written at or after ``started_ns``.
 
     Distinguishes a file that is *reporting* something from a file that

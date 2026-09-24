@@ -130,34 +130,42 @@ class DialCommand(ActionCore):
     # ── event assigners ───────────────────────────────────────
 
     def _build_event_assigners(self):
-        self.add_event_assigner(EventAssigner(
-            id="turn_cw",
-            ui_label="Turn Clockwise",
-            default_events=[Input.Dial.Events.TURN_CW],
-            callback=lambda data: self._on_turn(1),
-        ))
+        self.add_event_assigner(
+            EventAssigner(
+                id="turn_cw",
+                ui_label="Turn Clockwise",
+                default_events=[Input.Dial.Events.TURN_CW],
+                callback=lambda data: self._on_turn(1),
+            )
+        )
 
-        self.add_event_assigner(EventAssigner(
-            id="turn_ccw",
-            ui_label="Turn Counter-Clockwise",
-            default_events=[Input.Dial.Events.TURN_CCW],
-            callback=lambda data: self._on_turn(-1),
-        ))
+        self.add_event_assigner(
+            EventAssigner(
+                id="turn_ccw",
+                ui_label="Turn Counter-Clockwise",
+                default_events=[Input.Dial.Events.TURN_CCW],
+                callback=lambda data: self._on_turn(-1),
+            )
+        )
 
-        self.add_event_assigner(EventAssigner(
-            id="press",
-            ui_label="Press",
-            default_events=[Input.Dial.Events.DOWN],
-            callback=lambda data: self._on_press(),
-        ))
+        self.add_event_assigner(
+            EventAssigner(
+                id="press",
+                ui_label="Press",
+                default_events=[Input.Dial.Events.DOWN],
+                callback=lambda data: self._on_press(),
+            )
+        )
 
         # Also support keys so this action works on buttons too (press only).
-        self.add_event_assigner(EventAssigner(
-            id="key_down",
-            ui_label="Key Down",
-            default_events=[Input.Key.Events.DOWN],
-            callback=lambda data: self._on_press(),
-        ))
+        self.add_event_assigner(
+            EventAssigner(
+                id="key_down",
+                ui_label="Key Down",
+                default_events=[Input.Key.Events.DOWN],
+                callback=lambda data: self._on_press(),
+            )
+        )
 
     # ── generated config rows ─────────────────────────────────
 
@@ -421,7 +429,9 @@ class DialCommand(ActionCore):
         # Re-clamp the current value and keep the threshold editor in sync.
         self._set_value(self._get_value())
         if self.threshold_row is not None:
-            self.threshold_row.set_bounds(self._min(), self._max(), self._step())
+            self.threshold_row.set_bounds(
+                self._min(), self._max(), self._step()
+            )
         self._update_visuals()
 
     def _on_thresholds_change(self, thresholds: list[dict]):
@@ -477,7 +487,9 @@ class DialCommand(ActionCore):
             if lo_at <= value <= hi_at:
                 span = hi_at - lo_at
                 f = 0.0 if span == 0 else (value - lo_at) / span
-                return [round(lo_c[i] + (hi_c[i] - lo_c[i]) * f) for i in range(4)]
+                return [
+                    round(lo_c[i] + (hi_c[i] - lo_c[i]) * f) for i in range(4)
+                ]
         return list(stops[-1][1])
 
     def _resolve_color(self, value: float) -> list[int] | None:
@@ -521,13 +533,18 @@ class DialCommand(ActionCore):
             # show.
             resolved = self._resolve_color(value)
             configured = self._configured_page_color()
-            color = resolved if resolved is not None else (configured or TRANSPARENT)
+            color = (
+                resolved
+                if resolved is not None
+                else (configured or TRANSPARENT)
+            )
 
             # Set the icon and label first without rendering, then drive the
             # page color last with update=True. set_label's own update path
             # bails on the label-control guard, so it can't be relied on to
             # repaint; set_page_color(update=True) always reaches
-            # ControllerDial.update() and repaints the touch strip on every turn.
+            # ControllerDial.update() and repaints the touch
+            # strip on every turn.
             # The value goes on the bottom label; set_label no-ops when the
             # user hasn't given this action control of that label.
             threshold = self._active_threshold(value)
@@ -541,7 +558,9 @@ class DialCommand(ActionCore):
 
             state = self.get_state()
             if state is not None:
-                state.background_manager.set_page_color(list(color), update=True)
+                state.background_manager.set_page_color(
+                    list(color), update=True
+                )
         except Exception as e:
             log.error(f"DialCommand: failed to update visuals: {e}")
 

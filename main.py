@@ -14,7 +14,9 @@ sys.path.append(os.path.dirname(__file__))
 class DialCommandPlugin(PluginBase):
     def __init__(self):
         self.PLUGIN_NAME = "Dial Command"
-        self.GITHUB_REPO = "https://github.com/z19r/streamcontroller-dial-command"
+        self.GITHUB_REPO = (
+            "https://github.com/z19r/streamcontroller-dial-command"
+        )
         super().__init__()
 
         self.lm = self.locale_manager
