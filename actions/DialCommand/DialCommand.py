@@ -1,4 +1,4 @@
-import os
+import os  # noqa: N999
 import subprocess
 import threading
 import time
@@ -6,18 +6,17 @@ import time
 import gi
 from loguru import logger as log
 
-from src.backend.PluginManager.ActionCore import ActionCore
-from src.backend.PluginManager.EventAssigner import EventAssigner
-from src.backend.DeckManagement.InputIdentifier import Input
-
+from GtkHelper.GenerativeUI.ColorButtonRow import ColorButtonRow
 from GtkHelper.GenerativeUI.EntryRow import EntryRow
 from GtkHelper.GenerativeUI.SpinRow import SpinRow
-from GtkHelper.GenerativeUI.ColorButtonRow import ColorButtonRow
 from GtkHelper.GenerativeUI.SwitchRow import SwitchRow
+from src.backend.DeckManagement.InputIdentifier import Input
+from src.backend.PluginManager.ActionCore import ActionCore
+from src.backend.PluginManager.EventAssigner import EventAssigner
 
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
-from gi.repository import Adw
+from gi.repository import Adw  # pyright: ignore[reportMissingModuleSource]
 
 from .ThresholdList import ThresholdListRow
 from .value_parse import in_range, parse_number
@@ -450,9 +449,6 @@ class DialCommand(ActionCore):
             return None
         return max(matches, key=lambda t: _num(t.get("at")))
 
-    def _default_icon(self) -> str:
-        return os.path.join(self.plugin_base.PATH, "assets", "dial.png")
-
     def _rgba(self, color) -> list[int]:
         """Normalize any stored color into a 4-channel [r, g, b, a] list."""
         return (list(color) + [0, 0, 0, 255])[:4]
@@ -551,8 +547,6 @@ class DialCommand(ActionCore):
             icon = threshold.get("icon") if threshold else None
             if icon and os.path.isfile(icon):
                 self.set_media(media_path=icon, update=False)
-            else:
-                self.set_media(media_path=self._default_icon(), update=False)
 
             self.set_label(_fmt(value), position="bottom", update=False)
 
