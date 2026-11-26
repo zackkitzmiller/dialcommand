@@ -1,10 +1,10 @@
 import os
 import sys
 
-from src.backend.PluginManager.PluginBase import PluginBase
-from src.backend.PluginManager.ActionHolder import ActionHolder
 from src.backend.DeckManagement.InputIdentifier import Input
+from src.backend.PluginManager.ActionHolder import ActionHolder
 from src.backend.PluginManager.ActionInputSupport import ActionInputSupport
+from src.backend.PluginManager.PluginBase import PluginBase
 
 from .actions.DialCommand.DialCommand import DialCommand
 
